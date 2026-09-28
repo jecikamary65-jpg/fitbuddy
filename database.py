@@ -17,9 +17,25 @@ def get_db_path() -> str:
     explicit_path = os.getenv("FITBUDDY_DB_PATH")
     if explicit_path:
         return explicit_path
-    if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+
+    is_serverless = (
+        bool(os.getenv("VERCEL"))
+        or bool(os.getenv("VERCEL_ENV"))
+        or bool(os.getenv("VERCEL_REGION"))
+        or bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+        or bool(os.getenv("LAMBDA_TASK_ROOT"))
+    )
+    if is_serverless:
         return "/tmp/fitbuddy.db"
-    return os.path.join(os.path.dirname(__file__), "fitbuddy.db")
+
+    local_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        if not os.access(local_dir, os.W_OK):
+            return "/tmp/fitbuddy.db"
+    except Exception:
+        return "/tmp/fitbuddy.db"
+
+    return os.path.join(local_dir, "fitbuddy.db")
 
 
 DB_PATH = get_db_path()
@@ -35,17 +51,21 @@ def get_db_connection():
     global _is_initialized
     if not _is_initialized:
         _is_initialized = True
-        init_db()
+        try:
+            init_db()
+        except Exception as err:
+            logger.warning(f"Lazy init_db warning: {err}")
 
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA foreign_keys = ON;")
-        # Avoid WAL mode on network filesystems or memory mounts if not supported
-        try:
-            conn.execute("PRAGMA journal_mode = WAL;")
-        except Exception:
-            pass
+        # WAL mode requires POSIX shared memory (.shm) which fails in serverless /tmp
+        if not str(DB_PATH).startswith("/tmp"):
+            try:
+                conn.execute("PRAGMA journal_mode = WAL;")
+            except Exception:
+                pass
         yield conn
         conn.commit()
     except Exception as exc:

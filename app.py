@@ -50,7 +50,10 @@ logger = logging.getLogger("fitbuddy.app")
 async def lifespan(app: FastAPI):
     """Initializes the database on startup and performs clean shutdown."""
     logger.info("Starting FitBuddy Application...")
-    init_db()
+    try:
+        init_db()
+    except Exception as exc:
+        logger.warning(f"Startup database initialization notice: {exc}")
     yield
     logger.info("Shutting down FitBuddy Application.")
 
@@ -71,10 +74,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files and Templates
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-static_dir = os.path.join(BASE_DIR, "static")
-templates_dir = os.path.join(BASE_DIR, "templates")
+# Static files and Templates resolution for local and Vercel serverless runtimes
+def locate_directory(name: str) -> str:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(current_dir, name),
+        os.path.join(current_dir, "api", name),
+        os.path.join(os.getcwd(), name),
+        os.path.join(os.getcwd(), "api", name),
+        os.path.join("/var/task", name),
+        os.path.join("/var/task", "api", name),
+    ]
+    for p in candidates:
+        if os.path.exists(p) and os.path.isdir(p):
+            return p
+    fallback = os.path.join(current_dir, name)
+    os.makedirs(fallback, exist_ok=True)
+    return fallback
+
+
+static_dir = locate_directory("static")
+templates_dir = locate_directory("templates")
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 templates = Jinja2Templates(directory=templates_dir)

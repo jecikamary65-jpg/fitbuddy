@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FitBuddy – AI Fitness Plan Generator</title>
+  <meta name="description" content="FitBuddy generates personalized 7-day workout splits and nutrition/recovery advice using Google Gemini AI and FastAPI.">
+  
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons for crisp UI accents -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- Main Stylesheet -->
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-dumbbell"></i>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">Fit<span class="accent-text">Buddy</span></span>
+          <span class="brand-badge">Gemini AI</span>
+        </div>
+      </div>
+
+      <div class="nav-status">
+        <div id="apiStatusPill" class="status-pill {% if gemini_ready %}status-active{% else %}status-demo{% endif %}">
+          <span class="status-dot"></span>
+          <span id="apiStatusText">{% if gemini_ready %}Gemini 2.5 Active{% else %}Demo Engine (Add Key){% endif %}</span>
+        </div>
+        <button id="btnApiKeyHelp" class="btn-icon" title="API Key Information" aria-label="API Setup Info">
+          <i class="fa-solid fa-circle-info"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="hero-content">
+      <div class="hero-tag">
+        <i class="fa-solid fa-wand-magic-sparkles"></i> Next-Gen Intelligent Fitness Coach
+      </div>
+      <h1 class="hero-title">
+        Your Personalized 7-Day <span class="gradient-text">Fitness Split & Nutrition</span>
+      </h1>
+      <p class="hero-subtitle">
+        Engineered with Google Gemini AI models. Get adaptive daily workouts, progressive sets & reps, recovery protocols, and custom adjustments.
+      </p>
+    </div>
+  </section>
+
+  <!-- Main Container -->
+  <main class="main-layout">
+    
+    <!-- LEFT COLUMN: Profile Input Form & Controls -->
+    <aside class="sidebar-column">
+      <div class="card glass-card form-card">
+        <div class="card-header">
+          <div class="header-icon"><i class="fa-solid fa-user-astronaut"></i></div>
+          <div>
+            <h2 class="card-title">Athlete Profile</h2>
+            <p class="card-subtitle">Input your stats & preferences</p>
+          </div>
+        </div>
+
+        <form id="workoutForm" class="fitness-form" novalidate>
+          
+          <!-- Full Name -->
+          <div class="form-group">
+            <label for="name" class="form-label">
+              <i class="fa-regular fa-user"></i> Full Name <span class="required">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="name" 
+              name="name" 
+              class="form-control" 
+              placeholder="e.g. Alex Hunter" 
+              required
+              minlength="1"
+              maxlength="100"
+              value="Alex Hunter"
+            >
+            <span class="field-error" id="nameError"></span>
+          </div>
+
+          <!-- Age and Weight Grid -->
+          <div class="form-row">
+            <div class="form-group col-half">
+              <label for="age" class="form-label">
+                <i class="fa-solid fa-cake-candles"></i> Age <span class="required">*</span>
+              </label>
+              <input 
+                type="number" 
+                id="age" 
+                name="age" 
+                class="form-control" 
+                placeholder="25" 
+                min="14" 
+                max="100" 
+                value="26"
+                required
+              >
+              <span class="field-error" id="ageError"></span>
+            </div>
+
+            <div class="form-group col-half">
+              <label for="weight" class="form-label">
+                <i class="fa-solid fa-weight-scale"></i> Weight (kg) <span class="required">*</span>
+              </label>
+              <input 
+                type="number" 
+                id="weight" 
+                name="weight" 
+                class="form-control" 
+                placeholder="72" 
+                min="30" 
+                max="300" 
+                step="0.5" 
+                value="72"
+                required
+              >
+              <span class="field-error" id="weightError"></span>
+            </div>
+          </div>
+
+          <!-- Fitness Goal Selection -->
+          <div class="form-group">
+            <label for="goal" class="form-label">
+              <i class="fa-solid fa-bullseye"></i> Primary Fitness Goal <span class="required">*</span>
+            </label>
+            <div class="custom-select-wrapper">
+              <select id="goal" name="goal" class="form-control form-select" required>
+                <option value="Weight Loss">🔥 Weight Loss (Metabolic Burn & Conditioning)</option>
+                <option value="Muscle Gain" selected>💪 Muscle Gain (Hypertrophy & Strength)</option>
+                <option value="General Wellness">🌿 General Wellness (Functional Fitness & Longevity)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Workout Intensity Selector -->
+          <div class="form-group">
+            <label class="form-label">
+              <i class="fa-solid fa-gauge-high"></i> Workout Intensity <span class="required">*</span>
+            </label>
+            <div class="segmented-control" id="intensitySelector">
+              <label class="segment-option">
+                <input type="radio" name="intensity" value="Low">
+                <span class="segment-label">Low</span>
+              </label>
+              <label class="segment-option">
+                <input type="radio" name="intensity" value="Medium" checked>
+                <span class="segment-label">Medium</span>
+              </label>
+              <label class="segment-option">
+                <input type="radio" name="intensity" value="High">
+                <span class="segment-label">High</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Experience Level -->
+          <div class="form-group">
+            <label for="experience_level" class="form-label">
+              <i class="fa-solid fa-medal"></i> Experience Level <span class="required">*</span>
+            </label>
+            <select id="experience_level" name="experience_level" class="form-control form-select" required>
+              <option value="Beginner">🌱 Beginner (Learning Form, 0-1 yr)</option>
+              <option value="Intermediate" selected>⚡ Intermediate (Consistent Training, 1-3 yrs)</option>
+              <option value="Advanced">🏆 Advanced (Experienced Athlete, 3+ yrs)</option>
+            </select>
+          </div>
+
+          <!-- Optional Preferences -->
+          <div class="form-group">
+            <label for="preferences" class="form-label">
+              <i class="fa-solid fa-sliders"></i> Optional Preferences / Constraints
+            </label>
+            <textarea 
+              id="preferences" 
+              name="preferences" 
+              class="form-control form-textarea" 
+              rows="2" 
+              placeholder="e.g. Home workouts with dumbbells, no jumping (knee friendly), 45 min limit..."
+              maxlength="500"
+            ></textarea>
+            <span class="char-count"><span id="prefCharCount">0</span>/500</span>
+          </div>
+
+          <!-- Submit Button -->
+          <button type="submit" id="btnGeneratePlan" class="btn btn-primary btn-block">
+            <span class="btn-text">
+              <i class="fa-solid fa-sparkles"></i> Generate My Plan
+            </span>
+            <span class="btn-spinner" style="display: none;">
+              <i class="fa-solid fa-spinner fa-spin"></i> Synthesizing with AI...
+            </span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Safety Disclaimer Card -->
+      <div class="card disclaimer-card">
+        <div class="disclaimer-header">
+          <i class="fa-solid fa-shield-halved disclaimer-icon"></i>
+          <span class="disclaimer-title">Health & Safety Disclaimer</span>
+        </div>
+        <p class="disclaimer-text">
+          FitBuddy provides general fitness and wellness information and is not a substitute for professional medical advice. Consult a qualified healthcare professional before beginning a new exercise program if you have health concerns, injuries, or medical conditions.
+        </p>
+      </div>
+    </aside>
+
+    <!-- RIGHT COLUMN: Output Area (Empty state, Loading state, Plan Display, Feedback, Nutrition) -->
+    <section class="content-column">
+
+      <!-- EMPTY STATE: Displayed prior to generation -->
+      <div id="emptyState" class="empty-state card glass-card">
+        <div class="empty-state-visual">
+          <div class="glow-orb"></div>
+          <i class="fa-solid fa-calendar-check empty-icon"></i>
+        </div>
+        <h3 class="empty-title">Ready to Transform Your Fitness Routine?</h3>
+        <p class="empty-desc">
+          Fill in your details on the left and click <strong>Generate My Plan</strong>. FitBuddy will utilize Google Gemini models to construct an evidence-based 7-day workout split, warm-ups, sets, repetitions, and rest periods tailored exclusively to you.
+        </p>
+        <div class="empty-features">
+          <div class="feat-item"><i class="fa-solid fa-check"></i> Complete 7-Day Structure</div>
+          <div class="feat-item"><i class="fa-solid fa-check"></i> Dynamic Warm-ups & Cooldowns</div>
+          <div class="feat-item"><i class="fa-solid fa-check"></i> Adaptive Plan Modification via Feedback</div>
+          <div class="feat-item"><i class="fa-solid fa-check"></i> Science-Backed Nutrition Tips</div>
+        </div>
+      </div>
+
+      <!-- LOADING STATE: Spinner and fitness quotes -->
+      <div id="loadingState" class="loading-state card glass-card" style="display: none;">
+        <div class="spinner-container">
+          <div class="pulse-ring"></div>
+          <i class="fa-solid fa-dumbbell spinner-icon fa-bounce"></i>
+        </div>
+        <h3 class="loading-title" id="loadingTitle">Consulting Gemini AI Coach...</h3>
+        <p class="loading-quote" id="loadingQuote">"Designing progressive overload and metabolic stimulus..."</p>
+        <div class="loading-bar-wrapper">
+          <div class="loading-bar-progress"></div>
+        </div>
+      </div>
+
+      <!-- RESULTS CONTAINER: Visible after generation -->
+      <div id="resultsContainer" style="display: none;">
+        
+        <!-- Plan Overview Header & Actions -->
+        <div class="card glass-card plan-summary-card">
+          <div class="summary-top">
+            <div>
+              <div class="plan-badge-group">
+                <span id="planUserBadge" class="badge badge-user"><i class="fa-regular fa-user"></i> Athlete</span>
+                <span id="planGoalBadge" class="badge badge-goal">Muscle Gain</span>
+                <span id="planIntensityBadge" class="badge badge-intensity">Medium</span>
+                <span id="planSourceBadge" class="badge badge-ai"><i class="fa-solid fa-microchip"></i> Gemini AI</span>
+                <span id="planUpdatedBadge" class="badge badge-updated" style="display: none;"><i class="fa-solid fa-rotate"></i> Updated via Feedback</span>
+              </div>
+              <h2 id="planMainTitle" class="plan-headline">Your 7-Day Personalized Split</h2>
+              <p id="planOverviewText" class="plan-overview-summary">
+                A custom routine designed to maximize muscular adaptations and recovery.
+              </p>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="plan-actions">
+              <button id="btnCopyPlan" class="btn btn-secondary btn-sm" title="Copy text to clipboard">
+                <i class="fa-regular fa-copy"></i> Copy
+              </button>
+              <button id="btnPrintPlan" class="btn btn-secondary btn-sm" title="Print or save as PDF">
+                <i class="fa-solid fa-print"></i> Print / PDF
+              </button>
+              <button id="btnExportJson" class="btn btn-secondary btn-sm" title="Download JSON">
+                <i class="fa-solid fa-code"></i> JSON
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7-Day Workout Grid -->
+        <div id="workoutDaysGrid" class="days-grid">
+          <!-- 7 Day Cards will be dynamically injected here by script.js -->
+        </div>
+
+        <!-- SCENARIO 2: Feedback & Regeneration Section -->
+        <div class="card glass-card feedback-card" id="feedbackSection">
+          <div class="card-header">
+            <div class="header-icon icon-purple"><i class="fa-solid fa-comments"></i></div>
+            <div>
+              <h3 class="card-title">Scenario 2: Refine Your Plan with Feedback</h3>
+              <p class="card-subtitle">Want more cardio? Less time? FitBuddy will intelligently reconstruct your schedule.</p>
+            </div>
+          </div>
+
+          <!-- Quick feedback suggestion chips -->
+          <div class="feedback-chips">
+            <span class="chip-label">Quick suggestions:</span>
+            <button type="button" class="chip-btn" data-text="Add more cardio intervals throughout the week.">🏃 Add more cardio</button>
+            <button type="button" class="chip-btn" data-text="I only have 30 minutes per workout session.">⏱️ 30-min time cap</button>
+            <button type="button" class="chip-btn" data-text="I feel fatigued; add another dedicated rest or recovery day.">🛌 Extra rest day</button>
+            <button type="button" class="chip-btn" data-text="Focus more volume on glutes and leg strength.">🦵 Focus on legs</button>
+            <button type="button" class="chip-btn" data-text="Reduce high impact exercises for sensitive knees and joints.">🛡️ Low impact joints</button>
+          </div>
+
+          <form id="feedbackForm" class="feedback-form">
+            <div class="form-group">
+              <label for="feedbackInput" class="form-label">
+                Tell FitBuddy how you want to modify your plan:
+              </label>
+              <textarea 
+                id="feedbackInput" 
+                class="form-control form-textarea" 
+                rows="3" 
+                placeholder="e.g. 'Can you switch Saturday to active recovery and add 10 minutes of HIIT after upper body days?'"
+                required
+                minlength="3"
+                maxlength="1000"
+              ></textarea>
+            </div>
+
+            <div class="feedback-actions">
+              <button type="submit" id="btnUpdatePlan" class="btn btn-purple">
+                <span class="btn-text">
+                  <i class="fa-solid fa-rotate"></i> Update My Plan
+                </span>
+                <span class="btn-spinner" style="display: none;">
+                  <i class="fa-solid fa-spinner fa-spin"></i> Regenerating Plan...
+                </span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- SCENARIO 3: Nutrition & Recovery Section -->
+        <div class="card glass-card nutrition-card" id="nutritionSection">
+          <div class="nutrition-header-row">
+            <div class="nutrition-header-info">
+              <div class="header-icon icon-emerald"><i class="fa-solid fa-apple-whole"></i></div>
+              <div>
+                <h3 class="card-title">Scenario 3: Nutrition & Recovery Protocol</h3>
+                <p class="card-subtitle">Get actionable, evidence-based nutrition and recovery guidance for your goal.</p>
+              </div>
+            </div>
+
+            <button id="btnGetNutritionTip" class="btn btn-emerald">
+              <span class="btn-text">
+                <i class="fa-solid fa-bolt"></i> Get Nutrition / Recovery Tip
+              </span>
+              <span class="btn-spinner" style="display: none;">
+                <i class="fa-solid fa-spinner fa-spin"></i> Generating Tip...
+              </span>
+            </button>
+          </div>
+
+          <!-- Nutrition Tip Display Card (Hidden until generated) -->
+          <div id="nutritionTipDisplay" class="nutrition-tip-box" style="display: none;">
+            <div class="tip-badge-row">
+              <span id="tipGoalBadge" class="badge badge-emerald">Goal Nutrition</span>
+              <span id="tipSourceBadge" class="badge badge-ai">Gemini AI</span>
+            </div>
+            <h4 id="tipTitle" class="tip-title">Nutritional Blueprint</h4>
+            
+            <div class="tip-content-grid">
+              <div class="tip-block tip-diet">
+                <div class="tip-block-header"><i class="fa-solid fa-utensils"></i> Core Nutrition Strategy</div>
+                <p id="tipMainText" class="tip-desc">Loading advice...</p>
+              </div>
+
+              <div class="tip-block tip-hydration">
+                <div class="tip-block-header"><i class="fa-solid fa-droplet"></i> Hydration Target</div>
+                <p id="tipHydrationText" class="tip-desc">Loading hydration...</p>
+              </div>
+
+              <div class="tip-block tip-recovery">
+                <div class="tip-block-header"><i class="fa-solid fa-bed"></i> Sleep & Muscle Repair</div>
+                <p id="tipRecoveryText" class="tip-desc">Loading recovery...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+  </main>
+
+  <!-- API Key Setup Modal -->
+  <div id="apiKeyModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="fa-solid fa-key"></i> Google Gemini API Configuration</h3>
+        <button id="btnCloseModal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>FitBuddy uses Google Gemini models for live, intelligent plan generation and feedback re-architecture.</p>
+        <div class="modal-instruction-step">
+          <strong>Step 1:</strong> Obtain a free API key at <a href="https://aistudio.google.com/" target="_blank" rel="noopener">Google AI Studio <i class="fa-solid fa-arrow-up-right-from-square"></i></a>.
+        </div>
+        <div class="modal-instruction-step">
+          <strong>Step 2:</strong> In the <code>fitbuddy</code> folder, create or open your <code>.env</code> file:
+          <pre class="code-block">GEMINI_API_KEY=AIzaSy...</pre>
+        </div>
+        <div class="modal-instruction-step">
+          <strong>Step 3:</strong> Restart the application with <code>uvicorn app:app --reload</code>.
+        </div>
+        <div class="modal-tip">
+          <i class="fa-solid fa-lightbulb"></i> <strong>Offline / Demo Mode:</strong> Even without an API key, FitBuddy includes a built-in intelligent engine so you can test all features and database flows immediately!
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnDismissModal" class="btn btn-secondary">Got It</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <i class="fa-solid fa-dumbbell"></i> FitBuddy AI Fitness Assistant
+      </div>
+      <div class="footer-tech">
+        <span>FastAPI</span> &bull; 
+        <span>Google Gemini API</span> &bull; 
+        <span>SQLite</span> &bull; 
+        <span>Prompt Engineering</span> &bull; 
+        <span>Jinja2</span>
+      </div>
+      <div class="footer-disclaimer">
+        For educational and personal wellness guidance. Not a medical treatment or prescription tool.
+      </div>
+    </div>
+  </footer>
+
+  <!-- Application Logic -->
+  <script src="/static/script.js"></script>
+</body>
+</html>
