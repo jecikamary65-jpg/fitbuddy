@@ -74,6 +74,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Vercel Serverless Path Normalization Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class VercelPathMiddleware(BaseHTTPMiddleware):
+    """
+    Normalizes ASGI request paths when Vercel serverless rewrites prepend
+    /api/index.py or /api/index to incoming URLs.
+    """
+    async def dispatch(self, request: Request, call_next):
+        path = request.scope.get("path", "")
+        for prefix in ["/api/index.py", "/api/index"]:
+            if path.startswith(prefix):
+                new_path = path[len(prefix):] or "/"
+                request.scope["path"] = new_path
+                break
+        else:
+            if path in ["/api", "/api/"]:
+                request.scope["path"] = "/"
+        return await call_next(request)
+
+
+app.add_middleware(VercelPathMiddleware)
+
+
 # Static files and Templates resolution for local and Vercel serverless runtimes
 def locate_directory(name: str) -> str:
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -97,6 +122,11 @@ static_dir = locate_directory("static")
 templates_dir = locate_directory("templates")
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+try:
+    app.mount("/api/static", StaticFiles(directory=static_dir), name="api_static")
+except Exception:
+    pass
+
 templates = Jinja2Templates(directory=templates_dir)
 
 
@@ -141,6 +171,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ------------------ Frontend Route ------------------ #
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/api", response_class=HTMLResponse)
+@app.get("/api/index", response_class=HTMLResponse)
+@app.get("/api/index.py", response_class=HTMLResponse)
 async def index_page(request: Request):
     """Renders the main FitBuddy web interface."""
     gemini_ready = gemini_service.is_gemini_configured()
@@ -184,6 +217,7 @@ async def system_status():
 
 
 @app.post("/generate-plan", response_model=PlanResponse)
+@app.post("/api/generate-plan", response_model=PlanResponse)
 async def generate_plan(payload: PlanGenerateRequest):
     """
     Scenario 1:
@@ -255,6 +289,7 @@ async def generate_plan(payload: PlanGenerateRequest):
 
 
 @app.post("/update-plan", response_model=PlanResponse)
+@app.post("/api/update-plan", response_model=PlanResponse)
 async def update_plan(payload: PlanUpdateRequest):
     """
     Scenario 2:
@@ -315,6 +350,7 @@ async def update_plan(payload: PlanUpdateRequest):
 
 
 @app.get("/plan/{user_id}", response_model=PlanResponse)
+@app.get("/api/plan/{user_id}", response_model=PlanResponse)
 async def get_user_plan(user_id: int):
     """Retrieves the latest 7-day workout plan for the given user ID."""
     plan_record = get_latest_plan_by_user(user_id)
@@ -336,6 +372,7 @@ async def get_user_plan(user_id: int):
 
 
 @app.post("/nutrition-tip", response_model=NutritionTipResponse)
+@app.post("/api/nutrition-tip", response_model=NutritionTipResponse)
 async def get_nutrition_tip(payload: NutritionTipRequest):
     """
     Scenario 3:
