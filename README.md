@@ -414,6 +414,36 @@ CREATE TABLE IF NOT EXISTS nutrition_tips (
 
 ## 🌐 Deployment Guidance
 
+### ⚡ Deploying on Vercel (Frontend & Backend Together)
+
+FitBuddy is pre-configured for **Vercel** serverless deployment with:
+- [`api/index.py`](api/index.py): Vercel Python serverless entrypoint
+- [`vercel.json`](vercel.json): Edge rewrite configuration routing all requests and static assets
+- [`database.py`](database.py): Auto-detects serverless environments and initializes SQLite in `/tmp/fitbuddy.db`
+
+#### Method A: 1-Click Import from GitHub (Recommended)
+1. Push your repository to GitHub:
+   ```bash
+   git push -u origin main
+   ```
+2. Log in to [Vercel](https://vercel.com/) and click **"Add New..." -> "Project"**.
+3. Select your repository (`fitbuddy` or `jecikamary65-jpg/fitbuddy`).
+4. In the **Environment Variables** section, add:
+   - Key: `GEMINI_API_KEY`
+   - Value: `AIzaSyYourActualKeyHere`
+5. Click **Deploy**. Vercel will install dependencies from `requirements.txt` and launch your live application with a global `*.vercel.app` URL!
+
+#### Method B: Deploying via Vercel CLI
+```bash
+# Run Vercel CLI from the fitbuddy directory
+npx vercel
+
+# When deploying to production:
+npx vercel --prod
+```
+
+---
+
 ### Deploying to Render / Railway / Cloud Run
 
 1. **Procfile** (for PaaS hosts like Render or Railway):
