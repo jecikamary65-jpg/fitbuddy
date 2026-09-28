@@ -12,8 +12,18 @@ from contextlib import contextmanager
 
 logger = logging.getLogger("fitbuddy.database")
 
-# Default database path can be overridden by environment variable
-DB_PATH = os.getenv("FITBUDDY_DB_PATH", os.path.join(os.path.dirname(__file__), "fitbuddy.db"))
+# Detect if running in Vercel or read-only serverless environment
+def get_db_path() -> str:
+    explicit_path = os.getenv("FITBUDDY_DB_PATH")
+    if explicit_path:
+        return explicit_path
+    if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        return "/tmp/fitbuddy.db"
+    return os.path.join(os.path.dirname(__file__), "fitbuddy.db")
+
+
+DB_PATH = get_db_path()
+_is_initialized = False
 
 
 @contextmanager
@@ -22,11 +32,20 @@ def get_db_connection():
     Context manager for SQLite database connections.
     Ensures foreign keys are enabled and rows are returned as dictionaries.
     """
+    global _is_initialized
+    if not _is_initialized:
+        _is_initialized = True
+        init_db()
+
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA journal_mode = WAL;")
+        # Avoid WAL mode on network filesystems or memory mounts if not supported
+        try:
+            conn.execute("PRAGMA journal_mode = WAL;")
+        except Exception:
+            pass
         yield conn
         conn.commit()
     except Exception as exc:
