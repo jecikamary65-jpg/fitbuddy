@@ -28,8 +28,9 @@ load_dotenv()
 
 logger = logging.getLogger("fitbuddy.gemini")
 
-# Default model used for fast and structured reasoning
-PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Default model list: gemini-3.8-flash, with automatic fallback to gemini-1.5-flash
+PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+CANDIDATE_MODELS = [PRIMARY_MODEL, "gemini-1.5-flash", "gemini-2.0-flash"]
 
 
 def get_api_key() -> Optional[str]:
@@ -425,31 +426,31 @@ def generate_workout_plan(user_data: Dict[str, Any]) -> Tuple[Dict[str, Any], st
         return plan, "FitBuddy Intelligent Engine (Demo Mode - Add GEMINI_API_KEY for live AI)"
 
     prompt = build_plan_generation_prompt(user_data)
-    try:
-        logger.info(f"Calling Gemini ({PRIMARY_MODEL}) to generate workout plan for {user_data.get('name')}...")
-        response = client.models.generate_content(
-            model=PRIMARY_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
-                temperature=0.4,
-                response_mime_type="application/json",
-            ),
-        )
-        if not response or not response.text:
-            raise ValueError("Gemini returned an empty response.")
+    last_error = None
 
-        plan = parse_and_validate_plan_json(response.text)
-        return plan, f"Gemini ({PRIMARY_MODEL})"
-    except APIError as api_err:
-        logger.error(f"Gemini API Error occurred: {api_err}. Falling back to default plan.")
-        # If API key is invalid or quota exceeded, fall back smoothly
-        plan = generate_fallback_workout_plan(user_data)
-        return plan, f"Fallback Engine (Gemini API Error: {api_err.message if hasattr(api_err, 'message') else 'Check API Key'})"
-    except Exception as exc:
-        logger.error(f"Unexpected error calling Gemini: {exc}. Falling back.")
-        plan = generate_fallback_workout_plan(user_data)
-        return plan, f"Fallback Engine (AI Processing Notice: {str(exc)})"
+    for model_name in CANDIDATE_MODELS:
+        try:
+            logger.info(f"Calling Gemini ({model_name}) to generate workout plan for {user_data.get('name')}...")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0.4,
+                    response_mime_type="application/json",
+                ),
+            )
+            if response and response.text:
+                plan = parse_and_validate_plan_json(response.text)
+                return plan, f"Gemini ({model_name})"
+        except Exception as exc:
+            logger.warning(f"Gemini call with {model_name} failed: {exc}. Trying next model...")
+            last_error = exc
+            continue
+
+    logger.error(f"All Gemini models exhausted. Last error: {last_error}. Using fallback generator.")
+    plan = generate_fallback_workout_plan(user_data)
+    return plan, f"Fallback Engine (Notice: {str(last_error)})"
 
 
 def update_workout_plan(
@@ -468,30 +469,31 @@ def update_workout_plan(
         return plan, "FitBuddy Intelligent Engine (Demo Mode - Add GEMINI_API_KEY for live AI)"
 
     prompt = build_plan_update_prompt(user_data, existing_plan, feedback)
-    try:
-        logger.info(f"Calling Gemini ({PRIMARY_MODEL}) to update plan with feedback: {feedback[:50]}...")
-        response = client.models.generate_content(
-            model=PRIMARY_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
-                temperature=0.4,
-                response_mime_type="application/json",
-            ),
-        )
-        if not response or not response.text:
-            raise ValueError("Gemini returned an empty update response.")
+    last_error = None
 
-        updated_plan = parse_and_validate_plan_json(response.text)
-        return updated_plan, f"Gemini ({PRIMARY_MODEL})"
-    except APIError as api_err:
-        logger.error(f"Gemini API Error during plan update: {api_err}")
-        plan = generate_fallback_workout_plan(user_data, feedback=feedback)
-        return plan, f"Fallback Engine (Gemini Notice: {api_err.message if hasattr(api_err, 'message') else 'Error'})"
-    except Exception as exc:
-        logger.error(f"Error during plan update: {exc}")
-        plan = generate_fallback_workout_plan(user_data, feedback=feedback)
-        return plan, f"Fallback Engine (AI Processing Notice: {str(exc)})"
+    for model_name in CANDIDATE_MODELS:
+        try:
+            logger.info(f"Calling Gemini ({model_name}) to update plan with feedback: {feedback[:50]}...")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0.4,
+                    response_mime_type="application/json",
+                ),
+            )
+            if response and response.text:
+                updated_plan = parse_and_validate_plan_json(response.text)
+                return updated_plan, f"Gemini ({model_name})"
+        except Exception as exc:
+            logger.warning(f"Gemini update call with {model_name} failed: {exc}. Trying next model...")
+            last_error = exc
+            continue
+
+    logger.error(f"All Gemini models exhausted for update: {last_error}. Using fallback generator.")
+    plan = generate_fallback_workout_plan(user_data, feedback=feedback)
+    return plan, f"Fallback Engine (Notice: {str(last_error)})"
 
 
 def generate_nutrition_tip(
@@ -509,27 +511,30 @@ def generate_nutrition_tip(
         return tip, "FitBuddy Nutrition Database (Demo Mode)"
 
     prompt = build_nutrition_recovery_prompt(goal, user_data)
-    try:
-        logger.info(f"Calling Gemini ({PRIMARY_MODEL}) for nutrition tip (Goal: {goal})...")
-        response = client.models.generate_content(
-            model=PRIMARY_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
-                temperature=0.5,
-                response_mime_type="application/json",
-            ),
-        )
-        if not response or not response.text:
-            raise ValueError("Empty nutrition tip response from Gemini.")
+    last_error = None
 
-        cleaned = clean_json_text(response.text)
-        tip_data = json.loads(cleaned)
-        # Ensure mandatory keys exist
-        if "title" not in tip_data or "tip" not in tip_data:
-            raise ValueError("Malformed nutrition tip JSON.")
-        return tip_data, f"Gemini ({PRIMARY_MODEL})"
-    except Exception as exc:
-        logger.error(f"Error generating nutrition tip with Gemini: {exc}")
-        tip = generate_fallback_nutrition_tip(goal)
-        return tip, f"Nutrition Database (Fallback: {str(exc)})"
+    for model_name in CANDIDATE_MODELS:
+        try:
+            logger.info(f"Calling Gemini ({model_name}) for nutrition tip (Goal: {goal})...")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0.5,
+                    response_mime_type="application/json",
+                ),
+            )
+            if response and response.text:
+                cleaned = clean_json_text(response.text)
+                tip_data = json.loads(cleaned)
+                if "title" in tip_data and "tip" in tip_data:
+                    return tip_data, f"Gemini ({model_name})"
+        except Exception as exc:
+            logger.warning(f"Nutrition tip call with {model_name} failed: {exc}. Trying next...")
+            last_error = exc
+            continue
+
+    logger.error(f"Nutrition tip failed with all models: {last_error}. Using fallback.")
+    tip = generate_fallback_nutrition_tip(goal)
+    return tip, f"Nutrition Database (Fallback: {str(last_error)})"
