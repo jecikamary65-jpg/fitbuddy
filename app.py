@@ -81,10 +81,17 @@ from starlette.middleware.base import BaseHTTPMiddleware
 class VercelPathMiddleware(BaseHTTPMiddleware):
     """
     Normalizes ASGI request paths when Vercel serverless rewrites route requests
-    to /api/index.py while passing the original client path in x-invoke-path header.
+    to /api/index.py?path=$1.
     """
     async def dispatch(self, request: Request, call_next):
-        # 1. Read original path passed by Vercel edge router
+        # 1. Read path parameter forwarded by Vercel rewrite rule
+        path_param = request.query_params.get("path")
+        if path_param is not None:
+            clean = "/" + path_param.lstrip("/")
+            request.scope["path"] = clean
+            return await call_next(request)
+
+        # 2. Read original path passed by Vercel edge router headers
         invoke_path = request.headers.get("x-invoke-path")
         if invoke_path:
             clean = invoke_path.split("?")[0]
@@ -92,7 +99,6 @@ class VercelPathMiddleware(BaseHTTPMiddleware):
                 request.scope["path"] = clean
                 return await call_next(request)
 
-        # 2. Check x-matched-path if invoke-path is absent
         matched_path = request.headers.get("x-matched-path")
         if matched_path and not matched_path.startswith("/api/index"):
             clean = matched_path.split("?")[0]
@@ -100,7 +106,7 @@ class VercelPathMiddleware(BaseHTTPMiddleware):
                 request.scope["path"] = clean
                 return await call_next(request)
 
-        # 3. Fallback: strip /api/index prefixes from path
+        # 3. Fallback: normalize scope path
         path = request.scope.get("path", "")
         for prefix in ["/api/index.py", "/api/index"]:
             if path.startswith(prefix):
@@ -190,8 +196,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/api", response_class=HTMLResponse)
-@app.get("/api/index", response_class=HTMLResponse)
-@app.get("/api/index.py", response_class=HTMLResponse)
 async def index_page(request: Request):
     """Renders the main FitBuddy web interface."""
     gemini_ready = gemini_service.is_gemini_configured()
