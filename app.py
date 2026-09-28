@@ -80,10 +80,27 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 class VercelPathMiddleware(BaseHTTPMiddleware):
     """
-    Normalizes ASGI request paths when Vercel serverless rewrites prepend
-    /api/index.py or /api/index to incoming URLs.
+    Normalizes ASGI request paths when Vercel serverless rewrites route requests
+    to /api/index.py while passing the original client path in x-invoke-path header.
     """
     async def dispatch(self, request: Request, call_next):
+        # 1. Read original path passed by Vercel edge router
+        invoke_path = request.headers.get("x-invoke-path")
+        if invoke_path:
+            clean = invoke_path.split("?")[0]
+            if clean:
+                request.scope["path"] = clean
+                return await call_next(request)
+
+        # 2. Check x-matched-path if invoke-path is absent
+        matched_path = request.headers.get("x-matched-path")
+        if matched_path and not matched_path.startswith("/api/index"):
+            clean = matched_path.split("?")[0]
+            if clean:
+                request.scope["path"] = clean
+                return await call_next(request)
+
+        # 3. Fallback: strip /api/index prefixes from path
         path = request.scope.get("path", "")
         for prefix in ["/api/index.py", "/api/index"]:
             if path.startswith(prefix):
@@ -93,6 +110,7 @@ class VercelPathMiddleware(BaseHTTPMiddleware):
         else:
             if path in ["/api", "/api/"]:
                 request.scope["path"] = "/"
+
         return await call_next(request)
 
 
