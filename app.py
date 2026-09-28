@@ -207,7 +207,17 @@ async def index_page(request: Request):
 
 # ------------------ API Endpoints ------------------ #
 
+@app.get("/api/debug-headers")
+async def debug_headers(request: Request):
+    return {
+        "headers": dict(request.headers),
+        "scope_path": request.scope.get("path"),
+        "url_path": str(request.url.path),
+    }
+
+
 @app.get("/api/status")
+@app.get("/status")
 async def system_status():
     """Returns application health, database connectivity, and Gemini AI status."""
     is_gemini = gemini_service.is_gemini_configured()
